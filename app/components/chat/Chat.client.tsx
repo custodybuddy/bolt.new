@@ -2,13 +2,13 @@ import { useStore } from '@nanostores/react';
 import type { Message } from 'ai';
 import { useChat } from 'ai/react';
 import { useAnimate } from 'framer-motion';
-import { memo, useEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { cssTransition, toast, ToastContainer } from 'react-toastify';
-import { useMessageParser, usePromptEnhancer, useShortcuts, useSnapScroll } from '~/lib/hooks';
+import { useMessageParser, useShortcuts, useSnapScroll } from '~/lib/hooks';
 import { useChatHistory, type StoreMessageHandler } from '~/lib/persistence';
 import { chatStore } from '~/lib/stores/chat';
 import { useWorkbench } from '~/lib/stores/workbench/context';
-import { fileModificationsToHTML } from '~/utils/diff';
+import { useChatAbort, useChatDiffAttachment, useChatHistorySync, useChatPromptEnhancer } from '~/lib/chat';
 import { cubicEasingFn } from '~/utils/easings';
 import { createScopedLogger, renderLogger } from '~/utils/logger';
 import { BaseChat } from './BaseChat';
@@ -103,10 +103,32 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory }: ChatProp
     initialMessages,
   });
 
-  const { enhancingPrompt, promptEnhanced, enhancePrompt, resetEnhancer } = usePromptEnhancer();
   const { parsedMessages, parseMessages } = useMessageParser();
 
   const TEXTAREA_MAX_HEIGHT = chatStarted ? 400 : 200;
+
+  const scrollTextArea = useCallback(() => {
+    const textarea = textareaRef.current;
+
+    if (textarea) {
+      textarea.scrollTop = textarea.scrollHeight;
+    }
+  }, []);
+
+  const { enhancingPrompt, promptEnhanced, enhancePrompt, resetEnhancer } = useChatPromptEnhancer({
+    input,
+    setInput,
+    onEnhanced: scrollTextArea,
+  });
+
+  const prepareMessage = useChatDiffAttachment(workbenchStore);
+
+  useChatHistorySync({
+    initialMessages,
+    messages,
+    storeMessageHistory,
+    workbenchStore,
+  });
 
   useEffect(() => {
     chatStore.setKey('started', initialMessages.length > 0);
@@ -114,38 +136,9 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory }: ChatProp
 
   useEffect(() => {
     parseMessages(messages, isLoading);
+  }, [messages, isLoading, parseMessages]);
 
-    if (messages.length > initialMessages.length) {
-      const { firstArtifact } = workbenchStore;
-
-      storeMessageHistory(messages, {
-        artifactId: firstArtifact?.id,
-        description: firstArtifact?.title,
-      })
-        .then((result) => {
-          if (result?.navigationTarget) {
-            replaceChatRoute(result.navigationTarget);
-          }
-        })
-        .catch((error) => {
-          logger.error('Failed to persist chat history', error);
-        });
-    }
-  }, [messages, isLoading, parseMessages, storeMessageHistory, workbenchStore]);
-
-  const scrollTextArea = () => {
-    const textarea = textareaRef.current;
-
-    if (textarea) {
-      textarea.scrollTop = textarea.scrollHeight;
-    }
-  };
-
-  const abort = () => {
-    stop();
-    chatStore.setKey('aborted', true);
-    workbenchStore.abortAllActions();
-  };
+  const abort = useChatAbort(stop, workbenchStore);
 
   useEffect(() => {
     const textarea = textareaRef.current;
@@ -158,7 +151,7 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory }: ChatProp
       textarea.style.height = `${Math.min(scrollHeight, TEXTAREA_MAX_HEIGHT)}px`;
       textarea.style.overflowY = scrollHeight > TEXTAREA_MAX_HEIGHT ? 'auto' : 'hidden';
     }
-  }, [input, textareaRef]);
+  }, [TEXTAREA_MAX_HEIGHT, input, textareaRef]);
 
   const runAnimation = async () => {
     if (chatStarted) {
@@ -182,41 +175,15 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory }: ChatProp
       return;
     }
 
-    /**
-     * @note (delm) Usually saving files shouldn't take long but it may take longer if there
-     * many unsaved files. In that case we need to block user input and show an indicator
-     * of some kind so the user is aware that something is happening. But I consider the
-     * happy case to be no unsaved files and I would expect users to save their changes
-     * before they send another message.
-     */
-    await workbenchStore.saveAllFiles();
-
-    const fileModifications = workbenchStore.getFileModifcations();
-
     chatStore.setKey('aborted', false);
 
-    runAnimation();
+    const { content, finalize } = await prepareMessage(_input);
 
-    if (fileModifications !== undefined) {
-      const diff = fileModificationsToHTML(fileModifications);
+    void runAnimation();
 
-      /**
-       * If we have file modifications we append a new user message manually since we have to prefix
-       * the user input with the file modifications and we don't want the new user input to appear
-       * in the prompt. Using `append` is almost the same as `handleSubmit` except that we have to
-       * manually reset the input and we'd have to manually pass in file attachments. However, those
-       * aren't relevant here.
-       */
-      append({ role: 'user', content: `${diff}\n\n${_input}` });
+    append({ role: 'user', content });
 
-      /**
-       * After sending a new message we reset all modifications since the model
-       * should now be aware of all the changes.
-       */
-      workbenchStore.resetAllFileModifications();
-    } else {
-      append({ role: 'user', content: _input });
-    }
+    finalize();
 
     setInput('');
 
@@ -252,19 +219,7 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory }: ChatProp
           content: parsedMessages[i] || '',
         };
       })}
-      enhancePrompt={() => {
-        enhancePrompt(input, (input) => {
-          setInput(input);
-          scrollTextArea();
-        });
-      }}
+      enhancePrompt={enhancePrompt}
     />
   );
 });
-
-function replaceChatRoute(nextId: string) {
-  const url = new URL(window.location.href);
-  url.pathname = `/chat/${nextId}`;
-
-  window.history.replaceState({}, '', url);
-}
