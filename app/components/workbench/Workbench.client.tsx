@@ -1,7 +1,7 @@
 import { useStore } from '@nanostores/react';
 import { motion, type HTMLMotionProps, type Variants } from 'framer-motion';
 import { computed } from 'nanostores';
-import { memo, useCallback, useEffect } from 'react';
+import { memo, useCallback, useEffect, useMemo } from 'react';
 import { toast } from 'react-toastify';
 import {
   type OnChangeCallback as OnEditorChange,
@@ -10,7 +10,8 @@ import {
 import { IconButton } from '~/components/ui/IconButton';
 import { PanelHeaderButton } from '~/components/ui/PanelHeaderButton';
 import { Slider, type SliderOptions } from '~/components/ui/Slider';
-import { workbenchStore, type WorkbenchViewType } from '~/lib/stores/workbench';
+import { useWorkbench } from '~/lib/stores/workbench/context';
+import type { WorkbenchViewType } from '~/lib/stores/workbench';
 import { classNames } from '~/utils/classNames';
 import { cubicEasingFn } from '~/utils/easings';
 import { renderLogger } from '~/utils/logger';
@@ -55,7 +56,12 @@ const workbenchVariants = {
 export const Workbench = memo(({ chatStarted, isStreaming }: WorkspaceProps) => {
   renderLogger.trace('Workbench');
 
-  const hasPreview = useStore(computed(workbenchStore.previews, (previews) => previews.length > 0));
+  const workbenchStore = useWorkbench();
+  const hasPreviewStore = useMemo(
+    () => computed(workbenchStore.previews, (previews) => previews.length > 0),
+    [workbenchStore],
+  );
+  const hasPreview = useStore(hasPreviewStore);
   const showWorkbench = useStore(workbenchStore.showWorkbench);
   const selectedFile = useStore(workbenchStore.selectedFile);
   const currentDocument = useStore(workbenchStore.currentDocument);
@@ -71,33 +77,42 @@ export const Workbench = memo(({ chatStarted, isStreaming }: WorkspaceProps) => 
     if (hasPreview) {
       setSelectedView('preview');
     }
-  }, [hasPreview]);
+  }, [hasPreview, workbenchStore]);
 
   useEffect(() => {
     workbenchStore.setDocuments(files);
-  }, [files]);
+  }, [files, workbenchStore]);
 
-  const onEditorChange = useCallback<OnEditorChange>((update) => {
-    workbenchStore.setCurrentDocumentContent(update.content);
-  }, []);
+  const onEditorChange = useCallback<OnEditorChange>(
+    (update) => {
+      workbenchStore.setCurrentDocumentContent(update.content);
+    },
+    [workbenchStore],
+  );
 
-  const onEditorScroll = useCallback<OnEditorScroll>((position) => {
-    workbenchStore.setCurrentDocumentScrollPosition(position);
-  }, []);
+  const onEditorScroll = useCallback<OnEditorScroll>(
+    (position) => {
+      workbenchStore.setCurrentDocumentScrollPosition(position);
+    },
+    [workbenchStore],
+  );
 
-  const onFileSelect = useCallback((filePath: string | undefined) => {
-    workbenchStore.setSelectedFile(filePath);
-  }, []);
+  const onFileSelect = useCallback(
+    (filePath: string | undefined) => {
+      workbenchStore.setSelectedFile(filePath);
+    },
+    [workbenchStore],
+  );
 
   const onFileSave = useCallback(() => {
     workbenchStore.saveCurrentDocument().catch(() => {
       toast.error('Failed to update file content');
     });
-  }, []);
+  }, [workbenchStore]);
 
   const onFileReset = useCallback(() => {
     workbenchStore.resetCurrentDocument();
-  }, []);
+  }, [workbenchStore]);
 
   return (
     chatStarted && (

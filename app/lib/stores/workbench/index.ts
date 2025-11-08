@@ -1,14 +1,14 @@
+import type { WebContainer } from '@webcontainer/api';
 import { atom, map, type MapStore, type ReadableAtom, type WritableAtom } from 'nanostores';
 import type { EditorDocument, ScrollPosition } from '~/components/editor/codemirror/CodeMirrorEditor';
 import { ActionRunner } from '~/lib/runtime/action-runner';
 import type { ActionCallbackData, ArtifactCallbackData } from '~/lib/runtime/message-parser';
-import { webcontainer } from '~/lib/webcontainer';
 import type { ITerminal } from '~/types/terminal';
 import { unreachable } from '~/utils/unreachable';
-import { EditorStore } from './editor';
-import { FilesStore, type FileMap } from './files';
-import { PreviewsStore } from './previews';
-import { TerminalStore } from './terminal';
+import { EditorStore } from '~/lib/stores/editor';
+import { FilesStore, type FileMap } from '~/lib/stores/files';
+import { PreviewsStore } from '~/lib/stores/previews';
+import { TerminalStore } from '~/lib/stores/terminal';
 
 export interface ArtifactState {
   id: string;
@@ -24,10 +24,12 @@ type Artifacts = MapStore<Record<string, ArtifactState>>;
 export type WorkbenchViewType = 'code' | 'preview';
 
 export class WorkbenchStore {
-  #previewsStore = new PreviewsStore(webcontainer);
-  #filesStore = new FilesStore(webcontainer);
-  #editorStore = new EditorStore(this.#filesStore);
-  #terminalStore = new TerminalStore(webcontainer);
+  #webcontainer: Promise<WebContainer>;
+  #previewsStore: PreviewsStore;
+  #filesStore: FilesStore;
+  #editorStore: EditorStore;
+  #terminalStore: TerminalStore;
+  #initPromise?: Promise<void>;
 
   artifacts: Artifacts = import.meta.hot?.data.artifacts ?? map({});
 
@@ -37,13 +39,31 @@ export class WorkbenchStore {
   modifiedFiles = new Set<string>();
   artifactIdList: string[] = [];
 
-  constructor() {
+  constructor(webcontainerPromise: Promise<WebContainer>) {
+    this.#webcontainer = webcontainerPromise;
+    this.#previewsStore = new PreviewsStore(this.#webcontainer);
+    this.#filesStore = new FilesStore(this.#webcontainer);
+    this.#editorStore = new EditorStore(this.#filesStore);
+    this.#terminalStore = new TerminalStore(this.#webcontainer);
+
     if (import.meta.hot) {
       import.meta.hot.data.artifacts = this.artifacts;
       import.meta.hot.data.unsavedFiles = this.unsavedFiles;
       import.meta.hot.data.showWorkbench = this.showWorkbench;
       import.meta.hot.data.currentView = this.currentView;
     }
+  }
+
+  init() {
+    if (!this.#initPromise) {
+      this.#initPromise = Promise.all([
+        this.#previewsStore.init(),
+        this.#filesStore.init(),
+        this.#terminalStore.init(),
+      ]).then(() => undefined);
+    }
+
+    return this.#initPromise;
   }
 
   get previews() {
@@ -229,7 +249,7 @@ export class WorkbenchStore {
       id,
       title,
       closed: false,
-      runner: new ActionRunner(webcontainer),
+      runner: new ActionRunner(this.#webcontainer),
     });
   }
 
@@ -272,5 +292,3 @@ export class WorkbenchStore {
     return artifacts[id];
   }
 }
-
-export const workbenchStore = new WorkbenchStore();

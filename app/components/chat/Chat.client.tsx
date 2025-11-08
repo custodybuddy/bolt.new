@@ -7,7 +7,7 @@ import { cssTransition, toast, ToastContainer } from 'react-toastify';
 import { useMessageParser, usePromptEnhancer, useShortcuts, useSnapScroll } from '~/lib/hooks';
 import { useChatHistory, type StoreMessageHandler } from '~/lib/persistence';
 import { chatStore } from '~/lib/stores/chat';
-import { workbenchStore } from '~/lib/stores/workbench';
+import { useWorkbench } from '~/lib/stores/workbench/context';
 import { fileModificationsToHTML } from '~/utils/diff';
 import { cubicEasingFn } from '~/utils/easings';
 import { createScopedLogger, renderLogger } from '~/utils/logger';
@@ -89,6 +89,8 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory }: ChatProp
 
   const [animationScope, animate] = useAnimate();
 
+  const workbenchStore = useWorkbench();
+
   const { messages, isLoading, input, handleInputChange, setInput, stop, append } = useChat({
     api: '/api/chat',
     onError: (error) => {
@@ -129,7 +131,7 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory }: ChatProp
           logger.error('Failed to persist chat history', error);
         });
     }
-  }, [messages, isLoading, parseMessages, storeMessageHistory]);
+  }, [messages, isLoading, parseMessages, storeMessageHistory, workbenchStore]);
 
   const scrollTextArea = () => {
     const textarea = textareaRef.current;

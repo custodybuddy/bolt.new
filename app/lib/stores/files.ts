@@ -51,6 +51,8 @@ export class FilesStore {
     return this.#size;
   }
 
+  #initPromise?: Promise<void>;
+
   constructor(webcontainerPromise: Promise<WebContainer>) {
     this.#webcontainer = webcontainerPromise;
 
@@ -58,8 +60,14 @@ export class FilesStore {
       import.meta.hot.data.files = this.files;
       import.meta.hot.data.modifiedFiles = this.#modifiedFiles;
     }
+  }
 
-    this.#init();
+  init() {
+    if (!this.#initPromise) {
+      this.#initPromise = this.#setupWatchers();
+    }
+
+    return this.#initPromise;
   }
 
   getFile(filePath: string) {
@@ -113,7 +121,7 @@ export class FilesStore {
     }
   }
 
-  async #init() {
+  async #setupWatchers() {
     const webcontainer = await this.#webcontainer;
 
     webcontainer.internal.watchPaths(

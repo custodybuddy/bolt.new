@@ -1,11 +1,12 @@
 import { useStore } from '@nanostores/react';
 import { chatStore } from '~/lib/stores/chat';
-import { workbenchStore } from '~/lib/stores/workbench';
+import { useWorkbench } from '~/lib/stores/workbench/context';
 import { classNames } from '~/utils/classNames';
 
 interface HeaderActionButtonsProps {}
 
 export function HeaderActionButtons({}: HeaderActionButtonsProps) {
+  const workbenchStore = useWorkbench();
   const showWorkbench = useStore(workbenchStore.showWorkbench);
   const { showChat } = useStore(chatStore);
 
