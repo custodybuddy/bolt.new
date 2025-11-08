@@ -12,7 +12,9 @@ export function WorkbenchProvider({ children }: PropsWithChildren): JSX.Element 
 
   useEffect(() => {
     if (store) {
-      void store.init();
+      void store.init().catch((error) => {
+        console.error('Failed to initialize workbench store', error);
+      });
       return undefined;
     }
 
@@ -32,13 +34,15 @@ export function WorkbenchProvider({ children }: PropsWithChildren): JSX.Element 
           import.meta.hot.data.workbenchStore = workbenchStore;
         }
 
-        await workbenchStore.init();
-
         if (disposed) {
           return;
         }
 
         setStore(workbenchStore);
+
+        void workbenchStore.init().catch((error) => {
+          console.error('Failed to initialize workbench store', error);
+        });
       } catch (error) {
         console.error('Failed to initialize workbench store', error);
       }
