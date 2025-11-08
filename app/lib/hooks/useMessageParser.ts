@@ -1,72 +1,60 @@
 import type { Message } from 'ai';
 import { useCallback, useEffect, useState } from 'react';
 import { StreamingMessageParser } from '~/lib/runtime/message-parser';
-import type { WorkbenchStore } from '~/lib/stores/workbench';
-import { useWorkbench } from '~/lib/stores/workbench/context';
+import type { ActionEventsMediator } from '~/lib/runtime/action-events';
+import { useActionEvents } from '~/lib/runtime/action-events';
 import { createScopedLogger } from '~/utils/logger';
 
 const logger = createScopedLogger('useMessageParser');
 
-let getWorkbenchStore: (() => WorkbenchStore) | undefined;
+let getActionEvents: (() => ActionEventsMediator) | undefined;
 
 const messageParser = new StreamingMessageParser({
   callbacks: {
     onArtifactOpen: (data) => {
       logger.trace('onArtifactOpen', data);
 
-      const store = getWorkbenchStore?.();
+      const actionEvents = getActionEvents?.();
 
-      if (!store) {
-        return;
-      }
-
-      store.showWorkbench.set(true);
-      store.addArtifact(data);
+      actionEvents?.emitArtifactOpen(data);
     },
     onArtifactClose: (data) => {
       logger.trace('onArtifactClose');
 
-      const store = getWorkbenchStore?.();
+      const actionEvents = getActionEvents?.();
 
-      if (!store) {
-        return;
-      }
-
-      store.updateArtifact(data, { closed: true });
+      actionEvents?.emitArtifactClose(data);
     },
     onActionOpen: (data) => {
       logger.trace('onActionOpen', data.action);
 
-      // we only add shell actions when when the close tag got parsed because only then we have the content
-      if (data.action.type !== 'shell') {
-        getWorkbenchStore?.()?.addAction(data);
-      }
+      const actionEvents = getActionEvents?.();
+
+      actionEvents?.emitActionOpen(data);
     },
     onActionClose: (data) => {
       logger.trace('onActionClose', data.action);
 
-      if (data.action.type === 'shell') {
-        getWorkbenchStore?.()?.addAction(data);
-      }
+      const actionEvents = getActionEvents?.();
 
-      getWorkbenchStore?.()?.runAction(data);
+      actionEvents?.emitActionClose(data);
     },
   },
 });
 
 export function useMessageParser() {
-  const workbenchStore = useWorkbench();
+  const actionEvents = useActionEvents();
   const [parsedMessages, setParsedMessages] = useState<{ [key: number]: string }>({});
 
   useEffect(() => {
-    getWorkbenchStore = () => workbenchStore;
+    getActionEvents = () => actionEvents;
 
     return () => {
-      if (getWorkbenchStore && getWorkbenchStore() === workbenchStore) {
-        getWorkbenchStore = undefined;
+      if (getActionEvents && getActionEvents() === actionEvents) {
+        getActionEvents = undefined;
       }
     };
-  }, [workbenchStore]);
+  }, [actionEvents]);
 
   const parseMessages = useCallback((messages: Message[], isLoading: boolean) => {
     let reset = false;
