@@ -5,7 +5,7 @@ import { useAnimate } from 'framer-motion';
 import { memo, useEffect, useRef, useState } from 'react';
 import { cssTransition, toast, ToastContainer } from 'react-toastify';
 import { useMessageParser, usePromptEnhancer, useShortcuts, useSnapScroll } from '~/lib/hooks';
-import { useChatHistory } from '~/lib/persistence';
+import { useChatHistory, type StoreMessageHandler } from '~/lib/persistence';
 import { chatStore } from '~/lib/stores/chat';
 import { workbenchStore } from '~/lib/stores/workbench';
 import { fileModificationsToHTML } from '~/utils/diff';
@@ -23,7 +23,21 @@ const logger = createScopedLogger('Chat');
 export function Chat() {
   renderLogger.trace('Chat');
 
-  const { ready, initialMessages, storeMessageHistory } = useChatHistory();
+  const { ready, initialMessages, storeMessageHistory, error, missingChat } = useChatHistory();
+
+  useEffect(() => {
+    if (error) {
+      toast.error(error.message);
+    }
+  }, [error]);
+
+  useEffect(() => {
+    if (missingChat) {
+      const url = new URL(window.location.href);
+      url.pathname = '/';
+      window.history.replaceState({}, '', url);
+    }
+  }, [missingChat]);
 
   return (
     <>
@@ -61,7 +75,7 @@ export function Chat() {
 
 interface ChatProps {
   initialMessages: Message[];
-  storeMessageHistory: (messages: Message[]) => Promise<void>;
+  storeMessageHistory: StoreMessageHandler;
 }
 
 export const ChatImpl = memo(({ initialMessages, storeMessageHistory }: ChatProps) => {
@@ -100,9 +114,22 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory }: ChatProp
     parseMessages(messages, isLoading);
 
     if (messages.length > initialMessages.length) {
-      storeMessageHistory(messages).catch((error) => toast.error(error.message));
+      const { firstArtifact } = workbenchStore;
+
+      storeMessageHistory(messages, {
+        artifactId: firstArtifact?.id,
+        description: firstArtifact?.title,
+      })
+        .then((result) => {
+          if (result?.navigationTarget) {
+            replaceChatRoute(result.navigationTarget);
+          }
+        })
+        .catch((error) => {
+          logger.error('Failed to persist chat history', error);
+        });
     }
-  }, [messages, isLoading, parseMessages]);
+  }, [messages, isLoading, parseMessages, storeMessageHistory]);
 
   const scrollTextArea = () => {
     const textarea = textareaRef.current;
@@ -232,3 +259,10 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory }: ChatProp
     />
   );
 });
+
+function replaceChatRoute(nextId: string) {
+  const url = new URL(window.location.href);
+  url.pathname = `/chat/${nextId}`;
+
+  window.history.replaceState({}, '', url);
+}

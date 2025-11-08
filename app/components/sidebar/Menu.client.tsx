@@ -2,9 +2,8 @@ import { motion, type Variants } from 'framer-motion';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'react-toastify';
 import { Dialog, DialogButton, DialogDescription, DialogRoot, DialogTitle } from '~/components/ui/Dialog';
-import { IconButton } from '~/components/ui/IconButton';
 import { ThemeSwitch } from '~/components/ui/ThemeSwitch';
-import { db, deleteById, getAll, chatId, type ChatHistoryItem } from '~/lib/persistence';
+import { chatStorage, type ChatHistoryItem } from '~/lib/persistence';
 import { cubicEasingFn } from '~/utils/easings';
 import { logger } from '~/utils/logger';
 import { HistoryItem } from './HistoryItem';
@@ -40,23 +39,32 @@ export function Menu() {
   const [dialogContent, setDialogContent] = useState<DialogContent>(null);
 
   const loadEntries = useCallback(() => {
-    if (db) {
-      getAll(db)
-        .then((list) => list.filter((item) => item.urlId && item.description))
-        .then(setList)
-        .catch((error) => toast.error(error.message));
+    if (!chatStorage.isEnabled) {
+      setList([]);
+      return;
     }
+
+    chatStorage
+      .list()
+      .then((list) => list.filter((item) => item.urlId && item.description))
+      .then(setList)
+      .catch((error) => toast.error(error.message));
   }, []);
 
-  const deleteItem = useCallback((event: React.UIEvent, item: ChatHistoryItem) => {
-    event.preventDefault();
+  const deleteItem = useCallback(
+    (event: React.UIEvent, item: ChatHistoryItem) => {
+      event.preventDefault();
 
-    if (db) {
-      deleteById(db, item.id)
+      if (!chatStorage.isEnabled) {
+        return;
+      }
+
+      chatStorage
+        .remove(item.id)
         .then(() => {
           loadEntries();
 
-          if (chatId.get() === item.id) {
+          if (chatStorage.getChatId() === item.id) {
             // hard page navigation to clear the stores
             window.location.pathname = '/';
           }
@@ -65,8 +73,9 @@ export function Menu() {
           toast.error('Failed to delete conversation');
           logger.error(error);
         });
-    }
-  }, []);
+    },
+    [loadEntries],
+  );
 
   const closeDialog = () => {
     setDialogContent(null);
@@ -76,7 +85,7 @@ export function Menu() {
     if (open) {
       loadEntries();
     }
-  }, [open]);
+  }, [open, loadEntries]);
 
   useEffect(() => {
     const enterThreshold = 40;
