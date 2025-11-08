@@ -1,7 +1,7 @@
 import { useStore } from '@nanostores/react';
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { IconButton } from '~/components/ui/IconButton';
-import { workbenchStore } from '~/lib/stores/workbench';
+import { useWorkbench } from '~/lib/stores/workbench/context';
 import { PortDropdown } from './PortDropdown';
 
 export const Preview = memo(() => {
@@ -10,6 +10,7 @@ export const Preview = memo(() => {
   const [activePreviewIndex, setActivePreviewIndex] = useState(0);
   const [isPortDropdownOpen, setIsPortDropdownOpen] = useState(false);
   const hasSelectedPreview = useRef(false);
+  const workbenchStore = useWorkbench();
   const previews = useStore(workbenchStore.previews);
   const activePreview = previews[activePreviewIndex];
 

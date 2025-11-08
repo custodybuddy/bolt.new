@@ -15,7 +15,7 @@ import { PanelHeaderButton } from '~/components/ui/PanelHeaderButton';
 import { shortcutEventEmitter } from '~/lib/hooks';
 import type { FileMap } from '~/lib/stores/files';
 import { themeStore } from '~/lib/stores/theme';
-import { workbenchStore } from '~/lib/stores/workbench';
+import { useWorkbench } from '~/lib/stores/workbench/context';
 import { classNames } from '~/utils/classNames';
 import { WORK_DIR } from '~/utils/constants';
 import { renderLogger } from '~/utils/logger';
@@ -59,6 +59,7 @@ export const EditorPanel = memo(
     renderLogger.trace('EditorPanel');
 
     const theme = useStore(themeStore);
+    const workbenchStore = useWorkbench();
     const showTerminal = useStore(workbenchStore.showTerminal);
 
     const terminalRefs = useRef<Array<TerminalRef | null>>([]);

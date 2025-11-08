@@ -7,6 +7,7 @@ import { coloredText } from '~/utils/terminal';
 export class TerminalStore {
   #webcontainer: Promise<WebContainer>;
   #terminals: Array<{ terminal: ITerminal; process: WebContainerProcess }> = [];
+  #initPromise?: Promise<void>;
 
   showTerminal: WritableAtom<boolean> = import.meta.hot?.data.showTerminal ?? atom(false);
 
@@ -16,6 +17,14 @@ export class TerminalStore {
     if (import.meta.hot) {
       import.meta.hot.data.showTerminal = this.showTerminal;
     }
+  }
+
+  init() {
+    if (!this.#initPromise) {
+      this.#initPromise = this.#webcontainer.then(() => undefined);
+    }
+
+    return this.#initPromise;
   }
 
   toggleTerminal(value?: boolean) {

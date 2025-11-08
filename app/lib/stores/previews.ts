@@ -10,19 +10,31 @@ export interface PreviewInfo {
 export class PreviewsStore {
   #availablePreviews = new Map<number, PreviewInfo>();
   #webcontainer: Promise<WebContainer>;
+  #initPromise?: Promise<void>;
+  #portListener?: (port: number, type: 'open' | 'close', url: string) => void;
 
   previews = atom<PreviewInfo[]>([]);
 
   constructor(webcontainerPromise: Promise<WebContainer>) {
     this.#webcontainer = webcontainerPromise;
-
-    this.#init();
   }
 
-  async #init() {
+  init() {
+    if (!this.#initPromise) {
+      this.#initPromise = this.#registerListeners();
+    }
+
+    return this.#initPromise;
+  }
+
+  async #registerListeners() {
     const webcontainer = await this.#webcontainer;
 
-    webcontainer.on('port', (port, type, url) => {
+    if (this.#portListener) {
+      return;
+    }
+
+    this.#portListener = (port, type, url) => {
       let previewInfo = this.#availablePreviews.get(port);
 
       if (type === 'close' && previewInfo) {
@@ -44,6 +56,8 @@ export class PreviewsStore {
       previewInfo.baseUrl = url;
 
       this.previews.set([...previews]);
-    });
+    };
+
+    webcontainer.on('port', this.#portListener);
   }
 }
