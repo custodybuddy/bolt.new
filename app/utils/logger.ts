@@ -11,7 +11,22 @@ interface Logger {
   setLevel: (level: DebugLevel) => void;
 }
 
-let currentLevel: DebugLevel = import.meta.env.VITE_LOG_LEVEL ?? import.meta.env.DEV ? 'debug' : 'info';
+const LOG_LEVELS: DebugLevel[] = ['trace', 'debug', 'info', 'warn', 'error'];
+const LEVEL_ORDER: Record<DebugLevel, number> = {
+  trace: 0,
+  debug: 1,
+  info: 2,
+  warn: 3,
+  error: 4,
+};
+const defaultLevel: DebugLevel = import.meta.env.DEV ? 'debug' : 'info';
+
+const maybeConfiguredLevel = import.meta.env.VITE_LOG_LEVEL as string | undefined;
+const configuredLevel = LOG_LEVELS.includes(maybeConfiguredLevel as DebugLevel)
+  ? (maybeConfiguredLevel as DebugLevel)
+  : undefined;
+
+let currentLevel: DebugLevel = configuredLevel ?? defaultLevel;
 
 const isWorker = 'HTMLRewriter' in globalThis;
 const supportsColor = !isWorker;
@@ -45,19 +60,13 @@ function setLevel(level: DebugLevel) {
 }
 
 function log(level: DebugLevel, scope: string | undefined, messages: any[]) {
-  const levelOrder: DebugLevel[] = ['trace', 'debug', 'info', 'warn', 'error'];
-
-  if (levelOrder.indexOf(level) < levelOrder.indexOf(currentLevel)) {
+  if (LEVEL_ORDER[level] < LEVEL_ORDER[currentLevel]) {
     return;
   }
 
-  const allMessages = messages.reduce((acc, current) => {
-    if (acc.endsWith('\n')) {
+  const allMessages = normalizeMessages(messages).reduce((acc, current) => {
+    if (acc === '' || acc.endsWith('\n')) {
       return acc + current;
-    }
-
-    if (!acc) {
-      return current;
     }
 
     return `${acc} ${current}`;
@@ -86,6 +95,28 @@ function log(level: DebugLevel, scope: string | undefined, messages: any[]) {
 
 function getLabelStyles(color: string, textColor: string) {
   return `background-color: ${color}; color: white; border: 4px solid ${color}; color: ${textColor};`;
+}
+
+function normalizeMessages(messages: any[]) {
+  return messages.map((message) => {
+    if (typeof message === 'string') {
+      return message;
+    }
+
+    if (message instanceof Error) {
+      return message.stack ?? message.message;
+    }
+
+    if (typeof message === 'object') {
+      try {
+        return JSON.stringify(message);
+      } catch {
+        return String(message);
+      }
+    }
+
+    return String(message);
+  });
 }
 
 function getColorForLevel(level: DebugLevel): string {
